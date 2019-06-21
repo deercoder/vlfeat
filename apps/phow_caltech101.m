@@ -51,12 +51,12 @@ function phow_caltech101()
 % This file is part of the VLFeat library and is made available under
 % the terms of the BSD license (see the COPYING file).
 
-conf.calDir = 'data/caltech-101' ;
+conf.calDir = 'data/fru92' ;
 conf.dataDir = 'data/' ;
 conf.autoDownloadData = true ;
 conf.numTrain = 15 ;
 conf.numTest = 15 ;
-conf.numClasses = 102 ;
+conf.numClasses = 92 ;
 conf.numWords = 600 ;
 conf.numSpatialX = [2 4] ;
 conf.numSpatialY = [2 4] ;
@@ -70,7 +70,7 @@ conf.svm.solver = 'sdca' ;
 conf.svm.biasMultiplier = 1 ;
 conf.phowOpts = {'Step', 3} ;
 conf.clobber = false ;
-conf.tinyProblem = true ;
+conf.tinyProblem = false ;
 conf.prefix = 'baseline' ;
 conf.randSeed = 1 ;
 
@@ -96,24 +96,24 @@ vl_twister('state',conf.randSeed) ;
 %                                            Download Caltech-101 data
 % --------------------------------------------------------------------
 
-if ~exist(conf.calDir, 'dir') || ...
-   (~exist(fullfile(conf.calDir, 'airplanes'),'dir') && ...
-    ~exist(fullfile(conf.calDir, '101_ObjectCategories', 'airplanes')))
-  if ~conf.autoDownloadData
-    error(...
-      ['Caltech-101 data not found. ' ...
-       'Set conf.autoDownloadData=true to download the required data.']) ;
-  end
-  vl_xmkdir(conf.calDir) ;
-  calUrl = ['http://www.vision.caltech.edu/Image_Datasets/' ...
-    'Caltech101/101_ObjectCategories.tar.gz'] ;
-  fprintf('Downloading Caltech-101 data to ''%s''. This will take a while.', conf.calDir) ;
-  untar(calUrl, conf.calDir) ;
-end
-
-if ~exist(fullfile(conf.calDir, 'airplanes'),'dir')
-  conf.calDir = fullfile(conf.calDir, '101_ObjectCategories') ;
-end
+% if ~exist(conf.calDir, 'dir') || ...
+%    (~exist(fullfile(conf.calDir, 'airplanes'),'dir') && ...
+%     ~exist(fullfile(conf.calDir, '101_ObjectCategories', 'airplanes')))
+%   if ~conf.autoDownloadData
+%     error(...
+%       ['Caltech-101 data not found. ' ...
+%        'Set conf.autoDownloadData=true to download the required data.']) ;
+%   end
+%   vl_xmkdir(conf.calDir) ;
+%   calUrl = ['http://www.vision.caltech.edu/Image_Datasets/' ...
+%     'Caltech101/101_ObjectCategories.tar.gz'] ;
+%   fprintf('Downloading Caltech-101 data to ''%s''. This will take a while.', conf.calDir) ;
+%   untar(calUrl, conf.calDir) ;
+% end
+% 
+% if ~exist(fullfile(conf.calDir, 'airplanes'),'dir')
+%   conf.calDir = fullfile(conf.calDir, '101_ObjectCategories') ;
+% end
 
 % --------------------------------------------------------------------
 %                                                           Setup data
@@ -156,9 +156,13 @@ if ~exist(conf.vocabPath) || conf.clobber
   descrs = {} ;
   %for ii = 1:length(selTrainFeats)
   parfor ii = 1:length(selTrainFeats)
-    im = imread(fullfile(conf.calDir, images{selTrainFeats(ii)})) ;
-    im = standarizeImage(im) ;
-    [drop, descrs{ii}] = vl_phow(im, model.phowOpts{:}) ;
+    try
+        im = imread(fullfile(conf.calDir, images{selTrainFeats(ii)})) ;
+        im = standarizeImage(im) ;
+        [drop, descrs{ii}] = vl_phow(im, model.phowOpts{:}) ;
+    catch exception
+        warning('skipped reading %s. Not an image', images{selTrainFeats(ii)});
+    end   
   end
 
   descrs = vl_colsubset(cat(2, descrs{:}), 10e4) ;
@@ -185,9 +189,13 @@ if ~exist(conf.histPath) || conf.clobber
   hists = {} ;
   parfor ii = 1:length(images)
   % for ii = 1:length(images)
-    fprintf('Processing %s (%.2f %%)\n', images{ii}, 100 * ii / length(images)) ;
-    im = imread(fullfile(conf.calDir, images{ii})) ;
-    hists{ii} = getImageDescriptor(model, im);
+    try
+        fprintf('Processing %s (%.2f %%)\n', images{ii}, 100 * ii / length(images)) ;
+        im = imread(fullfile(conf.calDir, images{ii})) ;
+        hists{ii} = getImageDescriptor(model, im);
+    catch exception
+        warning('skipped processing %s. Not reading image', images{ii});
+    end
   end
 
   hists = cat(2, hists{:}) ;
@@ -212,7 +220,9 @@ if ~exist(conf.modelPath) || conf.clobber
       lambda = 1 / (conf.svm.C *  length(selTrain)) ;
       w = [] ;
       parfor ci = 1:length(classes)
+        %warning('lenght %d', classes{ci});
         perm = randperm(length(selTrain)) ;
+        warning('perm %d\n', perm);
         fprintf('Training model for class %s\n', classes{ci}) ;
         y = 2 * (imageClass(selTrain) == ci) - 1 ;
         [w(:,ci) b(ci) info] = vl_svmtrain(psix(:, selTrain(perm)), y(perm), lambda, ...
